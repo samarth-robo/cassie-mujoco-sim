@@ -15,7 +15,14 @@ To cross-compile for Windows, use `make PLATFORM=WIN`. (NOT TESTED)
 
 A directory named release will be created containing the files needed to use the library with a C interface. A Python interface can be generated with `make ctypes`, which requires ctypeslib2 to be installed.
 
-A license file for MuJoCo (mjkey.txt) is required to run the simulation. The library also includes functions that can be used for communicating with Cassie over UDP, and MuJoCo is not required if only these functions are called.
+## Special Instructions for Python interface
+1. Get [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
+2. Create the `cassie` environment: `conda env create -f environment.yml`.
+3. `conda activate cassie && make ctypes`
+
+A license file for MuJoCo (mjkey.txt) is required to run the simulation. Set the environment variable `MUJOCO_KEY_PATH` to the directory containing `mjkey.txt`.
+
+The library also includes functions that can be used for communicating with Cassie over UDP, and MuJoCo is not required if only these functions are called.
 
 To build and run the examples:
 1.  Place mjkey.txt in the `.mujoco`directory

@@ -39,7 +39,7 @@ build: $(LIBOUT)
 	cp -r model/* build/
 
 ctypes: build
-	clang2py include/*.h --clang-args="-I/usr/include/clang/6.0/include -Iinclude" -l ./$(LIBOUT) -o build/cassiemujoco_ctypes.py
+	clang2py include/*.h --clang-args="-I$(CONDA_PREFIX)/lib/clang/10.0.1/include -Iinclude" -l ./$(LIBOUT) -o build/cassiemujoco_ctypes.py
 	sed -i '/import ctypes/aimport os\n_dir_path = os.path.dirname(os.path.realpath(__file__))' build/cassiemujoco_ctypes.py
 	sed -i "s/CDLL('.\/$(LIBOUT)')/CDLL(_dir_path + '\/$(LIBOUT)')/g" build/cassiemujoco_ctypes.py
 

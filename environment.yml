@@ -1,0 +1,14 @@
+name: cassie
+
+channels:
+  - conda-forge
+
+dependencies:
+  - clang
+  - clang-tools
+  - python-clang
+  - python=3.6
+  - ipython
+  - numpy
+  - pip:
+    - git+https://github.com/samarth-robo/ctypeslib.git
