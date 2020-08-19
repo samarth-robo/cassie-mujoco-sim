@@ -10,5 +10,6 @@ dependencies:
   - python=3.6
   - ipython
   - numpy
+  - pip
   - pip:
     - git+https://github.com/samarth-robo/ctypeslib.git

@@ -28,7 +28,6 @@ clean:
 	rm -rf test/
 
 $(LIBOUT): src/*.c
-	echo src/*.c $(INC) $(CFLAGS) -o $(LIBOUT) $(LDFLAGS) $(LIBS)
 	$(CC) src/*.c $(INC) $(CFLAGS) -o $(LIBOUT) $(LDFLAGS) $(LIBS)
 
 build: $(LIBOUT)
