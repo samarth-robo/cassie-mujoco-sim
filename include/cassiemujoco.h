@@ -23,10 +23,119 @@
 #include "cassie_user_in_t.h"
 #include "state_out_t.h"
 #include "pd_in_t.h"
+#include "mujoco.h"
+#include "glfw3.h"
+#include "cassie_core_sim.h"
+#include "state_output.h"
+#include "pd_input.h"
+
+#define NUM_DRIVES 10
+#define NUM_JOINTS 6
+#define TORQUE_DELAY_CYCLES 6
+
+/*******************************************************************************
+ * Sensor filtering
+ ******************************************************************************/
+
+#define DRIVE_FILTER_NB 9
+#define JOINT_FILTER_NB 4
+#define JOINT_FILTER_NA 3
+
+static int drive_filter_b[DRIVE_FILTER_NB] = {
+    2727, 534, -2658, -795, 72, 110, 19, -6, -3
+};
+
+static double joint_filter_b[JOINT_FILTER_NB] = {
+    12.348, 12.348, -12.348, -12.348
+};
+
+static double joint_filter_a[JOINT_FILTER_NA] = {
+    1.0, -1.7658, 0.79045
+};
+
+typedef struct drive_filter {
+    int x[DRIVE_FILTER_NB];
+} drive_filter_t;
+
+typedef struct joint_filter {
+    double x[JOINT_FILTER_NB];
+    double y[JOINT_FILTER_NA];
+} joint_filter_t;
 
 
+struct cassie_sim {
+    mjModel *m;
+    mjData *d;
+    cassie_core_sim_t *core;
+    state_output_t *estimator;
+    pd_input_t *pd;
+    cassie_out_t cassie_out;
+    drive_filter_t drive_filter[NUM_DRIVES];
+    joint_filter_t joint_filter[NUM_JOINTS];
+    double torque_delay[NUM_DRIVES][TORQUE_DELAY_CYCLES];
+};
 typedef struct cassie_sim cassie_sim_t;
+
+struct cassie_vis {
+    //visual interaction controls
+    double lastx;
+    double lasty;
+    bool button_left;
+    bool button_middle;
+    bool button_right;
+
+    int lastbutton;
+    double lastclicktm;
+
+    int refreshrate;
+
+    int showhelp;
+    bool showoption;
+    bool showGRF;
+    int GRFcount;
+    bool showfullscreen;
+    bool showsensor;
+    bool slowmotion;
+
+    bool showinfo;
+    bool paused;
+
+    int framenum;
+    int lastframenum;
+
+    int perturb_body;   // Body to apply perturb force to in vis_draw
+    double perturb_force[6];    // Perturb force to apply
+    
+    // GLFW  handle
+    GLFWwindow *window;
+
+    // camera matrices
+    double modelView[16], projection[16];
+    int viewport[4];
+
+    // MuJoCo stuff
+    mjvCamera cam;
+    mjvOption opt;
+    mjvScene scn;
+    mjrContext con;
+    mjvPerturb pert;
+    mjvFigure figsensor;
+    mjvFigure figGRF;
+    mjModel* m;
+    mjData* d;
+};
 typedef struct cassie_vis cassie_vis_t;
+
+struct cassie_state {
+    mjData *d;
+    cassie_core_sim_t *core;
+    state_output_t *estimator;
+    pd_input_t *pd;
+    cassie_out_t cassie_out;
+    drive_filter_t drive_filter[NUM_DRIVES];
+    joint_filter_t joint_filter[NUM_JOINTS];
+    double torque_delay[NUM_DRIVES][TORQUE_DELAY_CYCLES];
+};
 typedef struct cassie_state cassie_state_t;
 
 
@@ -166,6 +275,8 @@ double *cassie_sim_qpos(cassie_sim_t *sim);
 double *cassie_sim_qvel(cassie_sim_t *sim);
 
 double *cassie_sim_qacc(cassie_sim_t *c);
+
+double *cassie_sim_xanchor(const cassie_sim_t *sim);
 
 // Returns the mjModel* used by the simulator
 void *cassie_sim_mjmodel(cassie_sim_t *sim);

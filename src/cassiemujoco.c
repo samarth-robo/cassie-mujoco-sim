@@ -23,13 +23,8 @@
 #include <pwd.h>
 #include <time.h>
 #include <linux/limits.h>
-#include "mujoco.h"
-#include "glfw3.h"
-#include "mjxmacro.h"
 #include "uitools.h"
-#include "cassie_core_sim.h"
-#include "state_output.h"
-#include "pd_input.h"
+#include "mjxmacro.h"
 
 // Platform specific headers
 #ifdef _WIN32
@@ -170,36 +165,6 @@ GLFW_FUNCTION_LIST
 #endif
 
 /*******************************************************************************
- * Sensor filtering
- ******************************************************************************/
-
-#define DRIVE_FILTER_NB 9
-#define JOINT_FILTER_NB 4
-#define JOINT_FILTER_NA 3
-
-static int drive_filter_b[DRIVE_FILTER_NB] = {
-    2727, 534, -2658, -795, 72, 110, 19, -6, -3
-};
-
-static double joint_filter_b[JOINT_FILTER_NB] = {
-    12.348, 12.348, -12.348, -12.348
-};
-
-static double joint_filter_a[JOINT_FILTER_NA] = {
-    1.0, -1.7658, 0.79045
-};
-
-typedef struct drive_filter {
-    int x[DRIVE_FILTER_NB];
-} drive_filter_t;
-
-typedef struct joint_filter {
-    double x[JOINT_FILTER_NB];
-    double y[JOINT_FILTER_NA];
-} joint_filter_t;
-
-
-/*******************************************************************************
  * Drive and joint order X macro lists
  ******************************************************************************/
 
@@ -227,79 +192,6 @@ typedef struct joint_filter {
 /*******************************************************************************
  * Opaque structure definitions
  ******************************************************************************/
-
-#define NUM_DRIVES 10
-#define NUM_JOINTS 6
-#define TORQUE_DELAY_CYCLES 6
-
-struct cassie_sim {
-    mjModel *m;
-    mjData *d;
-    cassie_core_sim_t *core;
-    state_output_t *estimator;
-    pd_input_t *pd;
-    cassie_out_t cassie_out;
-    drive_filter_t drive_filter[NUM_DRIVES];
-    joint_filter_t joint_filter[NUM_JOINTS];
-    double torque_delay[NUM_DRIVES][TORQUE_DELAY_CYCLES];
-};
-
-struct cassie_vis {
-    //visual interaction controls
-    double lastx;
-    double lasty;
-    bool button_left;
-    bool button_middle;
-    bool button_right;
-
-    int lastbutton;
-    double lastclicktm;
-
-    int refreshrate;
-
-    int showhelp;
-    bool showoption;
-    bool showGRF;
-    int GRFcount;
-    bool showfullscreen;
-    bool showsensor;
-    bool slowmotion;
-
-    bool showinfo;
-    bool paused;
-
-    int framenum;
-    int lastframenum;
-
-    int perturb_body;   // Body to apply perturb force to in vis_draw
-    double perturb_force[6];    // Perturb force to apply
-    
-    // GLFW  handle
-    GLFWwindow *window;
-
-    // MuJoCo stuff
-
-    mjvCamera cam;
-    mjvOption opt;
-    mjvScene scn;
-    mjrContext con;
-    mjvPerturb pert;
-    mjvFigure figsensor;
-    mjvFigure figGRF;
-    mjModel* m;
-    mjData* d;
-};
-
-struct cassie_state {
-    mjData *d;
-    cassie_core_sim_t *core;
-    state_output_t *estimator;
-    pd_input_t *pd;
-    cassie_out_t cassie_out;
-    drive_filter_t drive_filter[NUM_DRIVES];
-    joint_filter_t joint_filter[NUM_JOINTS];
-    double torque_delay[NUM_DRIVES][TORQUE_DELAY_CYCLES];
-};
 
 // Redefine mjVISSTRING HAAAACKKKK to fix stupid bug
 const char* VISSTRING[mjNVISFLAG][3] = { {"Convex Hull"    ,"0",  "H"},
@@ -1045,6 +937,10 @@ double *cassie_sim_qacc(cassie_sim_t *c)
     return c->d->qacc;
 }
 
+double *cassie_sim_xanchor(const cassie_sim_t *c) {
+    return c->d->xanchor;
+}
+
 int cassie_sim_forward(cassie_sim_t *c)
 {
    mj_forward_fp(c->m, c->d);
@@ -1520,12 +1416,85 @@ void cassie_vis_apply_force(cassie_vis_t *v, double xfrc[6], const char* name)
     }
 }
 
+void vector3_normalize(const double x_in[3], double x_out[3])
+{
+    double mag = sqrt(pow(x_in[0], 2.0) + pow(x_in[1], 2.0) + pow(x_in[2], 2.0));
+    x_out[0] = x_in[0] / mag;
+    x_out[1] = x_in[1] / mag;
+    x_out[2] = x_in[2] / mag;
+}
+
+void vector3_cross(const double x1[3], const double x2[3], double y[3])
+{
+    y[0] = x1[1]*x2[2] - x1[2]*x2[1];
+    y[1] = x1[2]*x2[0] - x1[0]*x2[2];
+    y[2] = x1[0]*x2[1] - x1[1]*x2[0];
+}
+
+double vector3_dot(const double x1[3], const double x2[3])
+{
+    return x1[0]*x2[0] + x1[1]*x2[1] + x1[2]*x2[2];
+}
+
+void cassie_vis_update_camera(cassie_vis_t *v)
+{
+    // viewport 
+    glfwGetWindowSize_fp(v->window, &(v->viewport[2]), &(v->viewport[3]));
+    
+    // perspective projection matrix
+    double aspect = (double)(v->viewport[2]) / v->viewport[3];
+    double fov_y = v->m->cam_fovy[0];
+    double znear = v->m->vis.map.znear * v->m->stat.extent;
+    double zfar  = v->m->vis.map.zfar  * v->m->stat.extent;
+    double f = (1.0 / tan(fov_y * M_PI / 360.0));
+    v->projection[0] = f / aspect;
+    v->projection[5] = f;
+    v->projection[10] = (zfar + znear) / (znear - zfar);
+    v->projection[11] = (2.0 * zfar * znear) / (znear - zfar);
+    v->projection[14] = -1.0;
+
+    // view matrix
+    double d = v->cam.distance, elev = v->cam.elevation, azim = v->cam.azimuth;
+    double eye[3] = {d*cos(elev)*sin(azim), d*sin(elev), d*cos(elev)*cos(azim)};
+    double Z[3] = {v->cam.lookat[0]-eye[0], v->cam.lookat[1]-eye[1], v->cam.lookat[2]-eye[2]};
+    vector3_normalize(Z, Z);
+    double X[3], Y[3], up[3] = {0.0, 1.0, 0.0};
+    vector3_cross(Z, up, X);
+    vector3_cross(X, Z, Y);
+    for (int i=0; i<3; i++)
+    {
+        v->modelView[i]   = X[i];
+        v->modelView[4+i] = Y[i];
+        v->modelView[8+i] = -Z[i];
+    }
+    v->modelView[3]  = -vector3_dot(X, eye);
+    v->modelView[7]  = -vector3_dot(Y, eye);
+    v->modelView[11] =  vector3_dot(Z, eye);
+    v->modelView[15] = 1.0;
+
+    // printf("projection:\n");
+    // for (int i=0; i<16; i++) printf("%f ", v->projection[i]);
+    // printf("\n");
+    // printf("modelView:\n");
+    // for (int i=0; i<16; i++) printf("%f ", v->modelView[i]);
+    // printf("\n");
+    // printf("lookAt\n");
+    // for (int i=0; i<3; i++) printf("%f ", v->cam.lookat[i]);
+    // printf("\n");
+    // printf("distance = %f\n", v->cam.distance);
+    // printf("azimuth = %f\n", v->cam.azimuth);
+    // printf("elevation = %f\n", v->cam.elevation);
+    // printf("Znear = %f, Zfar = %f\n", znear, zfar);
+    // printf("fov_y = %f\n", v->m->cam_fovy[0]);
+}
+
 void scroll(GLFWwindow* window, double xoffset, double yoffset)
 {
     (void)xoffset;
     cassie_vis_t* v = glfwGetWindowUserPointer_fp(window);
     // scroll: emulate vertical mouse motion = 5% of window height
     mjv_moveCamera_fp(v->m, mjMOUSE_ZOOM, 0.0, -0.05 * yoffset, &v->scn, &v->cam);
+    cassie_vis_update_camera(v);
 }
 
 void mouse_move(GLFWwindow* w, double xpos, double ypos) {
@@ -1563,6 +1532,7 @@ void mouse_move(GLFWwindow* w, double xpos, double ypos) {
         mjv_movePerturb_fp(v->m, v->d, action, xchange, ychange, &v->scn, &v->pert);
     } else {
         mjv_moveCamera_fp(v->m, action, xchange, ychange, &v->scn, &v->cam);
+        cassie_vis_update_camera(v);
     }
 }
 
@@ -1694,6 +1664,7 @@ void cassie_vis_set_cam(cassie_vis_t* v, const char* body_name, double zoom, dou
     // mjv_moveCamera_fp(v->m, mjMOUSE_ZOOM, 0.0, zoom, &v->scn, &v->cam);
     // printf("xpos: %f\typos: %f\n", xpos, ypos);
     // mjv_moveCamera_fp(v->m, GLFW_PRESS, xpos, ypos, &v->scn, &v->cam);
+    // cassie_vis_update_camera(v);
     
 }
 
@@ -1710,6 +1681,7 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             v->cam.fixedcamid = -1;
             mjv_moveCamera_fp(v->m, mjMOUSE_ZOOM, 0.0, -0.05*8, &v->scn, &v->cam);
             mjv_moveCamera_fp(v->m, action, 0, -.15, &v->scn, &v->cam);
+            cassie_vis_update_camera(v);
         }
         // control keys
         if (mods == GLFW_MOD_CONTROL) {
@@ -2122,6 +2094,11 @@ cassie_vis_t *cassie_vis_init(cassie_sim_t* c, const char* modelfile) {
     glfwSetMouseButtonCallback_fp(v->window, mouse_button);
     glfwSetScrollCallback_fp(v->window, scroll);
     glfwSetKeyCallback_fp(v->window, key_callback);
+
+    memset(v->modelView, 0.0, 16*sizeof(double));
+    memset(v->projection, 0.0, 16*sizeof(double));
+    memset(v->viewport, 0, 4*sizeof(int));
+    cassie_vis_update_camera(v);
 
     return v;
 }

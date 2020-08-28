@@ -10,5 +10,10 @@ dependencies:
   - python=3.6
   - ipython
   - numpy
+  - scipy
+  - matplotlib
+  - pygame
+  - pip
   - pip:
+    - pygame
     - git+https://github.com/samarth-robo/ctypeslib.git
