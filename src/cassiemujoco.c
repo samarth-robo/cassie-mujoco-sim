@@ -1416,85 +1416,12 @@ void cassie_vis_apply_force(cassie_vis_t *v, double xfrc[6], const char* name)
     }
 }
 
-void vector3_normalize(const double x_in[3], double x_out[3])
-{
-    double mag = sqrt(pow(x_in[0], 2.0) + pow(x_in[1], 2.0) + pow(x_in[2], 2.0));
-    x_out[0] = x_in[0] / mag;
-    x_out[1] = x_in[1] / mag;
-    x_out[2] = x_in[2] / mag;
-}
-
-void vector3_cross(const double x1[3], const double x2[3], double y[3])
-{
-    y[0] = x1[1]*x2[2] - x1[2]*x2[1];
-    y[1] = x1[2]*x2[0] - x1[0]*x2[2];
-    y[2] = x1[0]*x2[1] - x1[1]*x2[0];
-}
-
-double vector3_dot(const double x1[3], const double x2[3])
-{
-    return x1[0]*x2[0] + x1[1]*x2[1] + x1[2]*x2[2];
-}
-
-void cassie_vis_update_camera(cassie_vis_t *v)
-{
-    // viewport 
-    glfwGetWindowSize_fp(v->window, &(v->viewport[2]), &(v->viewport[3]));
-    
-    // perspective projection matrix
-    double aspect = (double)(v->viewport[2]) / v->viewport[3];
-    double fov_y = v->m->cam_fovy[0];
-    double znear = v->m->vis.map.znear * v->m->stat.extent;
-    double zfar  = v->m->vis.map.zfar  * v->m->stat.extent;
-    double f = (1.0 / tan(fov_y * M_PI / 360.0));
-    v->projection[0] = f / aspect;
-    v->projection[5] = f;
-    v->projection[10] = (zfar + znear) / (znear - zfar);
-    v->projection[11] = (2.0 * zfar * znear) / (znear - zfar);
-    v->projection[14] = -1.0;
-
-    // view matrix
-    double d = v->cam.distance, elev = v->cam.elevation, azim = v->cam.azimuth;
-    double eye[3] = {d*cos(elev)*sin(azim), d*sin(elev), d*cos(elev)*cos(azim)};
-    double Z[3] = {v->cam.lookat[0]-eye[0], v->cam.lookat[1]-eye[1], v->cam.lookat[2]-eye[2]};
-    vector3_normalize(Z, Z);
-    double X[3], Y[3], up[3] = {0.0, 1.0, 0.0};
-    vector3_cross(Z, up, X);
-    vector3_cross(X, Z, Y);
-    for (int i=0; i<3; i++)
-    {
-        v->modelView[i]   = X[i];
-        v->modelView[4+i] = Y[i];
-        v->modelView[8+i] = -Z[i];
-    }
-    v->modelView[3]  = -vector3_dot(X, eye);
-    v->modelView[7]  = -vector3_dot(Y, eye);
-    v->modelView[11] =  vector3_dot(Z, eye);
-    v->modelView[15] = 1.0;
-
-    // printf("projection:\n");
-    // for (int i=0; i<16; i++) printf("%f ", v->projection[i]);
-    // printf("\n");
-    // printf("modelView:\n");
-    // for (int i=0; i<16; i++) printf("%f ", v->modelView[i]);
-    // printf("\n");
-    // printf("lookAt\n");
-    // for (int i=0; i<3; i++) printf("%f ", v->cam.lookat[i]);
-    // printf("\n");
-    // printf("distance = %f\n", v->cam.distance);
-    // printf("azimuth = %f\n", v->cam.azimuth);
-    // printf("elevation = %f\n", v->cam.elevation);
-    // printf("Znear = %f, Zfar = %f\n", znear, zfar);
-    // printf("fov_y = %f\n", v->m->cam_fovy[0]);
-}
-
 void scroll(GLFWwindow* window, double xoffset, double yoffset)
 {
     (void)xoffset;
     cassie_vis_t* v = glfwGetWindowUserPointer_fp(window);
     // scroll: emulate vertical mouse motion = 5% of window height
     mjv_moveCamera_fp(v->m, mjMOUSE_ZOOM, 0.0, -0.05 * yoffset, &v->scn, &v->cam);
-    cassie_vis_update_camera(v);
 }
 
 void mouse_move(GLFWwindow* w, double xpos, double ypos) {
@@ -1532,7 +1459,6 @@ void mouse_move(GLFWwindow* w, double xpos, double ypos) {
         mjv_movePerturb_fp(v->m, v->d, action, xchange, ychange, &v->scn, &v->pert);
     } else {
         mjv_moveCamera_fp(v->m, action, xchange, ychange, &v->scn, &v->cam);
-        cassie_vis_update_camera(v);
     }
 }
 
@@ -1664,7 +1590,6 @@ void cassie_vis_set_cam(cassie_vis_t* v, const char* body_name, double zoom, dou
     // mjv_moveCamera_fp(v->m, mjMOUSE_ZOOM, 0.0, zoom, &v->scn, &v->cam);
     // printf("xpos: %f\typos: %f\n", xpos, ypos);
     // mjv_moveCamera_fp(v->m, GLFW_PRESS, xpos, ypos, &v->scn, &v->cam);
-    // cassie_vis_update_camera(v);
     
 }
 
@@ -1681,7 +1606,6 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             v->cam.fixedcamid = -1;
             mjv_moveCamera_fp(v->m, mjMOUSE_ZOOM, 0.0, -0.05*8, &v->scn, &v->cam);
             mjv_moveCamera_fp(v->m, action, 0, -.15, &v->scn, &v->cam);
-            cassie_vis_update_camera(v);
         }
         // control keys
         if (mods == GLFW_MOD_CONTROL) {
@@ -2095,10 +2019,8 @@ cassie_vis_t *cassie_vis_init(cassie_sim_t* c, const char* modelfile) {
     glfwSetScrollCallback_fp(v->window, scroll);
     glfwSetKeyCallback_fp(v->window, key_callback);
 
-    memset(v->modelView, 0.0, 16*sizeof(double));
-    memset(v->projection, 0.0, 16*sizeof(double));
-    memset(v->viewport, 0, 4*sizeof(int));
-    cassie_vis_update_camera(v);
+    v->nMarkers = 0;
+    v->maxnMarkers = 50;
 
     return v;
 }
@@ -2130,6 +2052,54 @@ void cassie_vis_free(cassie_vis_t *v)
 
     // Free cassie_vis_t
     free(v);
+}
+
+
+void defaultGeom(mjvGeom* geom, float size)
+{
+    geom->type = mjGEOM_SPHERE;
+    geom->dataid = -1;
+    geom->objtype = mjOBJ_UNKNOWN;
+    geom->objid = -1;
+    geom->category = mjCAT_DECOR;
+    geom->texid = -1;
+    geom->texuniform = 0;
+    geom->texrepeat[0] = 1;
+    geom->texrepeat[1] = 1;
+    geom->emission = 0;
+    geom->specular = 0.5;
+    geom->shininess = 0.5;
+    geom->reflectance = 0;
+    geom->label[0] = 0;
+    geom->size[0] = size;
+    geom->size[1] = size;
+    geom->size[2] = size;
+    memset(geom->mat, 0, 9*sizeof(float));
+    geom->mat[0] = 1.0;
+    geom->mat[4] = 1.0;
+    geom->mat[8] = 1.0;
+}
+
+
+void markershow(cassie_vis_t *v)
+{
+   // updateScene updates ngeoms everytime it is caslled
+    mjv_updateScene_fp(v->m, v->d, &v->opt, &v->pert, &v->cam,
+        mjCAT_ALL, &v->scn);
+    for (int i=0; i<v->nMarkers; i++) {
+        if (v->scn.ngeom >= v->scn.maxgeom) break;
+        mjvGeom* g = v->scn.geoms + v->scn.ngeom++;
+        defaultGeom(g, v->markers[i].size);
+        memcpy(g->pos, v->markers[i].pos, 3*sizeof(float));
+        memcpy(g->rgba, v->markers[i].rgba, 4*sizeof(float));
+        // printf("eMarker %d, pos (%f, %f, %f), rgba (%f, %f, %f, %f)\n", i, v->markers[i].pos[0], v->markers[i].pos[1], v->markers[i].pos[2], v->markers[i].rgba[0], v->markers[i].rgba[1], v->markers[i].rgba[2], v->markers[i].rgba[3]);
+        // printf("Marker %d, pos (%f, %f, %f), rgba (%f, %f, %f, %f)\n", i, g->pos[0], g->pos[1], g->pos[2], g->rgba[0], g->rgba[1], g->rgba[2], g->rgba[3]);
+    }
+    // reset the number of markers, just like how mujoco does with ngeoms
+    // thie means the user has to at least set the number of markers 
+    // every time they call cassie_vis_draw(), but it helps if they
+    // want to delete some markers
+    v->nMarkers = 0;
 }
 
 
@@ -2167,7 +2137,7 @@ bool cassie_vis_draw(cassie_vis_t *v, cassie_sim_t *c)
     glfwGetFramebufferSize_fp(v->window, &viewport.width, &viewport.height);
     mjrRect smallrect = viewport;
     // Render scene
-    mjv_updateScene_fp(c->m, c->d, &v->opt, &v->pert, &v->cam, mjCAT_ALL, &v->scn);
+    markershow(v);  // must be called before mjr_render
     mjr_render_fp(viewport, &v->scn, &v->con);
     if (v->showsensor) {
         if (!v->paused) {

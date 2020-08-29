@@ -76,6 +76,15 @@ struct cassie_sim {
 };
 typedef struct cassie_sim cassie_sim_t;
 
+
+struct cassie_vis_marker {
+    float pos[3];
+    float rgba[4];
+    float size;
+};
+typedef struct cassie_vis_marker cassie_vis_marker_t;
+
+
 struct cassie_vis {
     //visual interaction controls
     double lastx;
@@ -109,9 +118,8 @@ struct cassie_vis {
     // GLFW  handle
     GLFWwindow *window;
 
-    // camera matrices
-    double modelView[16], projection[16];
-    int viewport[4];
+    int nMarkers, maxnMarkers;
+    cassie_vis_marker_t markers[50];
 
     // MuJoCo stuff
     mjvCamera cam;
@@ -328,6 +336,7 @@ void cassie_sim_full_reset(cassie_sim_t *sim);
 
 double* cassie_sim_xquat(cassie_sim_t *c, const char* name);
 
+void cassie_sim_foot_positions(const cassie_sim_t *c, double pos[6]);
 void cassie_sim_foot_orient(const cassie_sim_t *c, double corient[4]);
 
 void cassie_sim_set_geom_name_quat(cassie_sim_t *c, const char* name, double *quat);
@@ -369,6 +378,9 @@ void cassie_vis_close(cassie_vis_t *vis);
 
 // Closes and frees the visualization window.
 void cassie_vis_free(cassie_vis_t *vis);
+
+// adds mjvGeom to the list of mjvGeoms to render
+bool cassie_vis_register_vGeom(cassie_vis_t *v, const mjvGeom *g);
 
 // Visualizes the state of the given Cassie simulator.
 bool cassie_vis_draw(cassie_vis_t *vis, cassie_sim_t *sim);
