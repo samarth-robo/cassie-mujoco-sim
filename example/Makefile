@@ -43,6 +43,6 @@ $(CTRLOUT): cassiectrl.c
 	$(CC) cassiectrl.c $(INC) $(CFLAGS) $(LDFLAGS) $(LIBS) -o $(CTRLOUT)
 
 $(IKOUT): cassieik.cpp
-	$(CC) cassieik.cpp $(INC)  $(CFLAGS) $(LDFLAGS) $(LIBS) -lstdc++ -o $(IKOUT)
+	$(CC) cassieik.cpp ../src/ik.cpp $(INC) `pkg-config --cflags eigen3` $(CFLAGS) $(LDFLAGS) $(LIBS) -L$(HOME)/.mujoco/mujoco200_linux/bin -lstdc++ -lm -lmujoco200 -lGL -lglew -o $(IKOUT)
 # Virtual targets
 .PHONY: all clean
