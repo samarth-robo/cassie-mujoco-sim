@@ -21,10 +21,12 @@ TESTOUT := cassietest
 SIMOUT  := cassiesim
 CTRLOUT := cassiectrl
 IKOUT   := cassieik
+KFOUT	:= cassie_keyframes
 endif
 
 # Default target
-all: $(TESTOUT) $(SIMOUT) $(CTRLOUT) $(IKOUT)
+# all: $(TESTOUT) $(SIMOUT) $(CTRLOUT) $(IKOUT) $(KFOUT)
+all: $(KFOUT)
 
 # Normal targets
 clean:
@@ -44,5 +46,8 @@ $(CTRLOUT): cassiectrl.c
 
 $(IKOUT): cassieik.cpp
 	$(CC) cassieik.cpp ../src/ik.cpp $(INC) `pkg-config --cflags eigen3` $(CFLAGS) $(LDFLAGS) $(LIBS) -L$(HOME)/.mujoco/mujoco200_linux/bin -lstdc++ -lm -lmujoco200 -lGL -lglew -o $(IKOUT)
+
+$(KFOUT): cassie_keyframes.cpp
+	$(CC) $(HOME)/.mujoco/mujoco200_linux/include/uitools.c ../src/ik.cpp cassie_keyframes.cpp $(INC) `pkg-config --cflags eigen3` $(CFLAGS) $(LDFLAGS) $(LIBS) -L$(HOME)/.mujoco/mujoco200_linux/bin -pthread -lstdc++ -lm -lmujoco200 -lGL -lglew  $(HOME)/.mujoco/mujoco200_linux/bin/libglfw.so.3 -o $(KFOUT)
 # Virtual targets
 .PHONY: all clean
